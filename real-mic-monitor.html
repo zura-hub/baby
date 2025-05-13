@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real Mic Baby Monitor</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        #meter { height: 30px; width: 0%; background: green; transition: all 0.3s; }
+        .led { width: 20px; height: 20px; border-radius: 50%; background: #ddd; display: inline-block; margin: 2px; }
+        .on { background: red; }
+        #status { margin-top: 20px; padding: 10px; background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h1>👶 Real Microphone Baby Cry Detector</h1>
+    <button id="startBtn">Start Listening</button>
+    <div id="meter"></div>
+    <div id="leds"></div>
+    <div id="status">Status: Not listening</div>
+
+    <script>
+        // Create LED bar
+        const leds = document.getElementById('leds');
+        for (let i = 0; i < 8; i++) {
+            const led = document.createElement('div');
+            led.className = 'led';
+            leds.appendChild(led);
+        }
+
+        // Audio processing
+        let audioContext, analyser, microphone;
+        const startBtn = document.getElementById('startBtn');
+        const meter = document.getElementById('meter');
+        const statusDiv = document.getElementById('status');
+        let isRunning = false;
+
+        startBtn.addEventListener('click', async () => {
+            if (isRunning) {
+                microphone.disconnect();
+                audioContext.close();
+                statusDiv.textContent = "Status: Stopped";
+                startBtn.textContent = "Start Listening";
+                isRunning = false;
+                return;
+            }
+
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                statusDiv.textContent = "Status: Listening to microphone...";
+                startBtn.textContent = "Stop Listening";
+                isRunning = true;
+
+                processAudio();
+            } catch (err) {
+                statusDiv.textContent = `Error: ${err.message}`;
+            }
+        });
+
+        function processAudio() {
+            if (!isRunning) return;
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate average volume (0-255)
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+            const intensity = Math.min(100, Math.round(average / 2.55)); // Convert to 0-100%
+
+            // Update display
+            meter.style.width = `${intensity}%`;
+            meter.style.background = intensity > 70 ? 'red' : intensity > 40 ? 'orange' : 'green';
+
+            // Update LEDs
+            const activeLeds = Math.min(8, Math.ceil(intensity / 12.5));
+            const ledElements = document.querySelectorAll('.led');
+            ledElements.forEach((led, index) => {
+                led.classList.toggle('on', index < activeLeds);
+            });
+
+            // Trigger vibration if loud
+            if (intensity > 50 && navigator.vibrate) {
+                navigator.vibrate(200);
+            }
+
+            // Show numeric value
+            statusDiv.textContent = `Status: Listening (Intensity: ${intensity}%)`;
+
+            requestAnimationFrame(processAudio);
+        }
+    </script>
+</body>
+</html>
